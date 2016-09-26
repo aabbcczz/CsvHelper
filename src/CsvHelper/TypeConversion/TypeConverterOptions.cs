@@ -5,11 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-#if NET_2_0
-using CsvHelper.MissingFrom20;
-#else
 using System.Linq;
-#endif
 
 namespace CsvHelper.TypeConversion
 {
@@ -18,9 +14,6 @@ namespace CsvHelper.TypeConversion
 	/// </summary>
 	public class TypeConverterOptions
 	{
-		private readonly List<string> booleanTrueValues = new List<string> { "yes", "y" };
-		private readonly List<string> booleanFalseValues = new List<string> { "no", "n" };
-
 		/// <summary>
 		/// Gets or sets the culture info.
 		/// </summary>
@@ -32,10 +25,12 @@ namespace CsvHelper.TypeConversion
 		public DateTimeStyles? DateTimeStyle { get; set; }
 
 #if !NET_2_0 && !NET_3_5 && !PCL
+
 		/// <summary>
 		/// Gets or sets the time span style.
 		/// </summary>
 		public TimeSpanStyles? TimeSpanStyle { get; set; }
+
 #endif
 
 		/// <summary>
@@ -47,19 +42,13 @@ namespace CsvHelper.TypeConversion
 		/// Gets the list of values that can be
 		/// used to represent a boolean of true.
 		/// </summary>
-		public List<string> BooleanTrueValues
-		{
-			get { return booleanTrueValues; }
-		}
+		public List<string> BooleanTrueValues { get; } = new List<string> { "yes", "y" };
 
 		/// <summary>
 		/// Gets the list of values that can be
 		/// used to represent a boolean of false.
 		/// </summary>
-		public List<string> BooleanFalseValues
-		{
-			get { return booleanFalseValues; }
-		}
+		public List<string> BooleanFalseValues { get; } = new List<string> { "no", "n" };
 
 		/// <summary>
 		/// Gets or sets the string format.
@@ -75,6 +64,7 @@ namespace CsvHelper.TypeConversion
 		public static TypeConverterOptions Merge( params TypeConverterOptions[] sources )
 		{
 			var options = new TypeConverterOptions();
+
 			foreach( var source in sources )
 			{
 				if( source == null )
@@ -109,16 +99,16 @@ namespace CsvHelper.TypeConversion
 					options.Format = source.Format;
 				}
 
-				if( !options.booleanTrueValues.SequenceEqual( source.booleanTrueValues ) )
+				if( !options.BooleanTrueValues.SequenceEqual( source.BooleanTrueValues ) )
 				{
-					options.booleanTrueValues.Clear();
-					options.booleanTrueValues.AddRange( source.booleanTrueValues );
+					options.BooleanTrueValues.Clear();
+					options.BooleanTrueValues.AddRange( source.BooleanTrueValues );
 				}
 
-				if( !options.booleanFalseValues.SequenceEqual( source.booleanFalseValues ) )
+				if( !options.BooleanFalseValues.SequenceEqual( source.BooleanFalseValues ) )
 				{
-					options.booleanFalseValues.Clear();
-					options.booleanFalseValues.AddRange( source.booleanFalseValues );
+					options.BooleanFalseValues.Clear();
+					options.BooleanFalseValues.AddRange( source.BooleanFalseValues );
 				}
 			}
 

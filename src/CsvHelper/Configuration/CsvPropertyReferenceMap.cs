@@ -2,6 +2,7 @@
 // This file is a part of CsvHelper and is dual licensed under MS-PL and Apache 2.0.
 // See LICENSE.txt for details or visit http://www.opensource.org/licenses/ms-pl.html for MS-PL and http://opensource.org/licenses/Apache-2.0 for Apache 2.0.
 // http://csvhelper.com
+#if !NET_2_0
 using System;
 using System.Reflection;
 
@@ -15,30 +16,9 @@ namespace CsvHelper.Configuration
 		private readonly CsvPropertyReferenceMapData data;
 
 		/// <summary>
-		/// Gets the property.
-		/// </summary>
-		[Obsolete( "This property is deprecated and will be removed in the next major release. Use Data.Property instead.", false )]
-		public PropertyInfo Property
-		{
-			get { return data.Property; }
-		}
-
-		/// <summary>
-		/// Gets the mapping.
-		/// </summary>
-		[Obsolete( "This property is deprecated and will be removed in the next major release. Use Data.Mapping instead.", false )]
-		public CsvClassMap Mapping
-		{
-			get { return data.Mapping; }
-		}
-
-		/// <summary>
 		/// Gets the property reference map data.
 		/// </summary>
-		public CsvPropertyReferenceMapData Data
-		{
-			get { return data; }
-		}
+		public CsvPropertyReferenceMapData Data => data;
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="CsvPropertyReferenceMap"/> class.
@@ -49,7 +29,7 @@ namespace CsvHelper.Configuration
 		{
 			if( mapping == null )
 			{
-				throw new ArgumentNullException( "mapping" );
+				throw new ArgumentNullException( nameof( mapping ) );
 			}
 
 			data = new CsvPropertyReferenceMapData( property, mapping );
@@ -83,3 +63,4 @@ namespace CsvHelper.Configuration
 		}
 	}
 }
+#endif // !NET_2_0

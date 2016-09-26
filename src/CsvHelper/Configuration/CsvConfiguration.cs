@@ -5,11 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-#if !NET_2_0
 using System.Linq;
-#else
-using CsvHelper.MissingFrom20;
-#endif
 using System.Reflection;
 using System.Text;
 using CsvHelper.TypeConversion;
@@ -21,24 +17,15 @@ namespace CsvHelper.Configuration
 	/// </summary>
 	public class CsvConfiguration
 	{
-		private BindingFlags propertyBindingFlags = BindingFlags.Public | BindingFlags.Instance;
-		private bool hasHeaderRecord = true;
-		private bool willThrowOnMissingField = true;
 		private string delimiter = ",";
 		private char quote = '"';
 		private string quoteString = "\"";
 		private string doubleQuoteString = "\"\"";
 		private char[] quoteRequiredChars;
-		private char comment = '#';
-		private int bufferSize = 2048;
-		private bool isHeaderCaseSensitive = true;
-		private Encoding encoding = Encoding.UTF8;
 		private CultureInfo cultureInfo = CultureInfo.CurrentCulture;
 		private bool quoteAllFields;
 		private bool quoteNoFields;
-		private bool ignoreBlankLines = true;
 #if !NET_2_0
-		private bool useNewObjectForNullReferenceProperties = true;
 		private readonly CsvClassMapCollection maps = new CsvClassMapCollection();
 #endif
 
@@ -46,33 +33,27 @@ namespace CsvHelper.Configuration
 		/// <summary>
 		/// The configured <see cref="CsvClassMap"/>s.
 		/// </summary>
-		public virtual CsvClassMapCollection Maps
-		{
-			get { return maps; }
-		}
+		public virtual CsvClassMapCollection Maps => maps;
 #endif
+
+		/// <summary>
+		/// Gets or sets the <see cref="TypeConverterOptionsFactory"/>.
+		/// </summary>
+		public virtual TypeConverterOptionsFactory TypeConverterOptionsFactory { get; set; } = new TypeConverterOptionsFactory();
 
 		/// <summary>
 		/// Gets or sets the property binding flags.
 		/// This determines what properties on the custom
 		/// class are used. Default is Public | Instance.
 		/// </summary>
-		public virtual BindingFlags PropertyBindingFlags
-		{
-			get { return propertyBindingFlags; }
-			set { propertyBindingFlags = value; }
-		}
+		public virtual BindingFlags PropertyBindingFlags { get; set; } = BindingFlags.Public | BindingFlags.Instance;
 
 		/// <summary>
 		/// Gets or sets a value indicating if the
 		/// CSV file has a header record.
 		/// Default is true.
 		/// </summary>
-		public virtual bool HasHeaderRecord
-		{
-			get { return hasHeaderRecord; }
-			set { hasHeaderRecord = value; }
-		}
+		public virtual bool HasHeaderRecord { get; set; } = true;
 
 		/// <summary>
 		/// Gets or sets a value indicating the if the CSV
@@ -87,11 +68,7 @@ namespace CsvHelper.Configuration
 		/// True to throw an exception, otherwise false.
 		/// Default is true.
 		/// </summary>
-		public virtual bool WillThrowOnMissingField
-		{
-			get { return willThrowOnMissingField; }
-			set { willThrowOnMissingField = value; }
-		}
+		public virtual bool WillThrowOnMissingField { get; set; } = true;
 
 		/// <summary>
 		/// Gets or sets a value indicating whether changes in the column
@@ -108,11 +85,7 @@ namespace CsvHelper.Configuration
 		/// column names is case sensitive. True for case sensitive
 		/// matching, otherwise false. Default is true.
 		/// </summary>
-		public virtual bool IsHeaderCaseSensitive
-		{
-			get { return isHeaderCaseSensitive; }
-			set { isHeaderCaseSensitive = value; }
-		}
+		public virtual bool IsHeaderCaseSensitive { get; set; } = true;
 
 		/// <summary>
 		/// Gets or sets a value indicating whether matcher header
@@ -219,10 +192,7 @@ namespace CsvHelper.Configuration
 		/// <value>
 		/// The new quote string.
 		/// </value>
-		public virtual string QuoteString
-		{
-			get { return quoteString; }
-		}
+		public virtual string QuoteString => quoteString;
 
 		/// <summary>
 		/// Gets a string representation of two of the currently configured Quote characters.
@@ -230,29 +200,19 @@ namespace CsvHelper.Configuration
 		/// <value>
 		/// The new double quote string.
 		/// </value>
-		public virtual string DoubleQuoteString
-		{
-			get { return doubleQuoteString; }
-		}
+		public virtual string DoubleQuoteString => doubleQuoteString;
 
 		/// <summary>
 		/// Gets an array characters that require
 		/// the field to be quoted.
 		/// </summary>
-		public virtual char[] QuoteRequiredChars
-		{
-			get { return quoteRequiredChars; }
-		}
+		public virtual char[] QuoteRequiredChars => quoteRequiredChars;
 
-        /// <summary>
+		/// <summary>
 		/// Gets or sets the character used to denote
 		/// a line that is commented out. Default is '#'.
 		/// </summary>
-		public virtual char Comment
-		{
-			get { return comment; }
-			set { comment = value; }
-		}
+		public virtual char Comment { get; set; } = '#';
 
 		/// <summary>
 		/// Gets or sets a value indicating if comments are allowed.
@@ -265,11 +225,7 @@ namespace CsvHelper.Configuration
 		/// used for reading and writing CSV files.
 		/// Default is 2048.
 		/// </summary>
-		public virtual int BufferSize
-		{
-			get { return bufferSize; }
-			set { bufferSize = value; }
-		}
+		public virtual int BufferSize { get; set; } = 2048;
 
 		/// <summary>
 		/// Gets or sets a value indicating whether all fields are quoted when writing,
@@ -327,11 +283,7 @@ namespace CsvHelper.Configuration
 		/// <summary>
 		/// Gets or sets the encoding used when counting bytes.
 		/// </summary>
-		public virtual Encoding Encoding
-		{
-			get { return encoding; }
-			set { encoding = value; }
-		}
+		public virtual Encoding Encoding { get; set; } = Encoding.UTF8;
 
 		/// <summary>
 		/// Gets or sets the culture info used to read an write CSV files.
@@ -377,13 +329,9 @@ namespace CsvHelper.Configuration
 		/// should be ignored when reading.
 		/// True to ignore, otherwise false. Default is true.
 		/// </summary>
-		public virtual bool IgnoreBlankLines
-		{
-			get { return ignoreBlankLines; }
-			set { ignoreBlankLines = value; }
-		}
+		public virtual bool IgnoreBlankLines { get; set; } = true;
 
-        /// <summary>
+		/// <summary>
         /// Gets or sets a value indicating if an Excel specific
         /// format should be used when writing fields containing
         /// numeric values. e.g. 00001 -> ="00001"
@@ -418,7 +366,7 @@ namespace CsvHelper.Configuration
 		/// should be ignored. True to ignore exceptions,
 		/// otherwise false. Default is false.
 		/// This is only applicable when during
-		/// <see cref="ICsvReaderRow.GetRecords{T}"/>.
+		/// <see cref="ICsvReader.GetRecords{T}"/>.
 		/// </summary>
 		public virtual bool IgnoreReadingExceptions { get; set; }
 
@@ -426,7 +374,7 @@ namespace CsvHelper.Configuration
 		/// Gets or sets the callback that is called when a reading
 		/// exception occurs. This will only happen when
 		/// <see cref="IgnoreReadingExceptions"/> is true, and when
-		/// calling <see cref="ICsvReaderRow.GetRecords{T}"/>.
+		/// calling <see cref="ICsvReader.GetRecords{T}"/>.
 		/// </summary>
 		public virtual Action<Exception, ICsvReader> ReadingExceptionCallback { get; set; }
 
@@ -437,12 +385,8 @@ namespace CsvHelper.Configuration
 		/// fields, or false to leave the fields empty for all the
 		/// reference property's properties.
 		/// </summary>
-		public virtual bool UseNewObjectForNullReferenceProperties
-		{
-			get { return useNewObjectForNullReferenceProperties; }
-			set { useNewObjectForNullReferenceProperties = value; }
-		}
-		
+		public virtual bool UseNewObjectForNullReferenceProperties { get; set; } = true;
+
 		/// <summary>
 		/// Use a <see cref="CsvClassMap{T}" /> to configure mappings.
 		/// When using a class map, no properties are mapped by default.
@@ -482,8 +426,6 @@ namespace CsvHelper.Configuration
 		/// <param name="map">The class map to register.</param>
 		public virtual void RegisterClassMap( CsvClassMap map )
 		{
-			map.CreateMap();
-
 			if( map.Constructor == null && map.PropertyMaps.Count == 0 && map.ReferenceMaps.Count == 0 )
 			{
 				throw new CsvConfigurationException( "No mappings were specified in the CsvClassMap." );

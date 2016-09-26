@@ -3,6 +3,7 @@
 // See LICENSE.txt for details or visit http://www.opensource.org/licenses/ms-pl.html for MS-PL and http://opensource.org/licenses/Apache-2.0 for Apache 2.0.
 // http://csvhelper.com
 using System;
+using System.Collections.Generic;
 #if !NET_2_0
 using System.Linq;
 using System.Linq.Expressions;
@@ -18,6 +19,8 @@ namespace CsvHelper
 	/// </summary>
 	internal static class ReflectionHelper
 	{
+		private static readonly Dictionary<int, Dictionary<Type, Delegate>> funcArgCache = new Dictionary<int, Dictionary<Type, Delegate>>();
+
 		/// <summary>
 		/// Creates an instance of type T.
 		/// </summary>
@@ -29,6 +32,7 @@ namespace CsvHelper
 #if NET_2_0
 			return Activator.CreateInstance<T>();
 #else
+
 			return (T)CreateInstance( typeof( T ), args );
 #endif
 		}
@@ -45,14 +49,21 @@ namespace CsvHelper
 			return Activator.CreateInstance( type, args );
 #else
 
-			var argumentTypes = args.Select( a => a.GetType() ).ToArray();
-			var argumentExpressions = argumentTypes.Select( ( t, i ) => Expression.Parameter( t, "var" + i ) ).ToArray();
-			var constructorInfo = type.GetConstructor( argumentTypes );
-			var constructor = Expression.New( constructorInfo, argumentExpressions );
-			var compiled = Expression.Lambda( constructor, argumentExpressions ).Compile();
+			Dictionary<Type, Delegate> funcCache;
+			if( !funcArgCache.TryGetValue( args.Length, out funcCache ) )
+			{
+				funcArgCache[args.Length] = funcCache = new Dictionary<Type, Delegate>();
+			}
+			
+			Delegate func;
+			if( !funcCache.TryGetValue( type, out func ) )
+			{
+				funcCache[type] = func = CreateInstanceDelegate( type, args );
+			}
+
 			try
 			{
-				return compiled.DynamicInvoke( args );
+				return func.DynamicInvoke( args );
 			}
 			catch( TargetInvocationException ex )
 			{
@@ -61,7 +72,34 @@ namespace CsvHelper
 #endif
 		}
 
+		private static T Default<T>()
+		{
+			return default( T );
+		}
+
 #if !NET_2_0
+
+		private static Delegate CreateInstanceDelegate( Type type, params object[] args )
+		{
+			Delegate compiled;
+			if( type.GetTypeInfo().IsValueType )
+			{
+				var method = typeof( ReflectionHelper ).GetMethod( "Default", BindingFlags.Static | BindingFlags.NonPublic );
+				method = method.MakeGenericMethod( type );
+				compiled = Expression.Lambda( Expression.Call( method ) ).Compile();
+			}
+			else
+			{
+				var argumentTypes = args.Select( a => a.GetType() ).ToArray();
+				var argumentExpressions = argumentTypes.Select( ( t, i ) => Expression.Parameter( t, "var" + i ) ).ToArray();
+				var constructorInfo = type.GetConstructor( argumentTypes );
+				var constructor = Expression.New( constructorInfo, argumentExpressions );
+				compiled = Expression.Lambda( constructor, argumentExpressions ).Compile();
+			}
+
+			return compiled;
+		}
+
 		/// <summary>
 		/// Gets the first attribute of type T on property.
 		/// </summary>
@@ -96,7 +134,7 @@ namespace CsvHelper
 		/// <summary>
 		/// Gets the constructor <see cref="NewExpression"/> from the give <see cref="Expression"/>.
 		/// </summary>
-		/// <typeparam name="T">The <see cref="Type"/> of the object that will be constructed.</typeparam>
+		/// <typeparam name="T">The <see cref="System.Type"/> of the object that will be constructed.</typeparam>
 		/// <param name="expression">The constructor <see cref="Expression"/>.</param>
 		/// <returns>A constructor <see cref="NewExpression"/>.</returns>
 		/// <exception cref="System.ArgumentException">Not a constructor expression.;expression</exception>
@@ -105,7 +143,7 @@ namespace CsvHelper
 			var newExpression = expression.Body as NewExpression;
 			if( newExpression == null )
 			{
-				throw new ArgumentException( "Not a constructor expression.", "expression" );
+				throw new ArgumentException( "Not a constructor expression.", nameof( expression ) );
 			}
 
 			return newExpression;
@@ -119,46 +157,63 @@ namespace CsvHelper
 		/// <returns>The <see cref="PropertyInfo"/> for the expression.</returns>
 		public static PropertyInfo GetProperty<TModel>( Expression<Func<TModel, object>> expression )
 		{
-			var member = GetMemberExpression( expression ).Member;
+			var member = GetMemberExpression( expression.Body ).Member;
 			var property = member as PropertyInfo;
 			if( property == null )
 			{
-				throw new CsvConfigurationException( string.Format( "'{0}' is not a property. Did you try to map a field by accident?", member.Name ) );
+				throw new CsvConfigurationException( $"'{member.Name}' is not a property. Did you try to map a field by accident?" );
 			}
 
 			return property;
 		}
 
+		public static Stack<PropertyInfo> GetProperties<TModel>( Expression<Func<TModel, object>> expression )
+		{
+			var stack = new Stack<PropertyInfo>();
+
+			var currentExpression = expression.Body;
+			while( true )
+			{
+				var memberExpression = GetMemberExpression( currentExpression );
+				if( memberExpression == null )
+				{
+					break;
+				}
+
+				var propertyInfo = memberExpression.Member as PropertyInfo;
+				if( propertyInfo == null )
+				{
+					throw new CsvConfigurationException( $"Member '{memberExpression.Member.Name}' is not a Property." );
+				}
+
+				stack.Push( propertyInfo );
+				currentExpression = memberExpression.Expression;
+			}
+
+			return stack;
+		}
+
 		/// <summary>
 		/// Gets the member expression.
 		/// </summary>
-		/// <typeparam name="TModel">The type of the model.</typeparam>
-		/// <typeparam name="T"></typeparam>
 		/// <param name="expression">The expression.</param>
 		/// <returns></returns>
-		private static MemberExpression GetMemberExpression<TModel, T>( Expression<Func<TModel, T>> expression )
+		private static MemberExpression GetMemberExpression( Expression expression )
 		{
-			// This method was taken from FluentNHibernate.Utils.ReflectionHelper.cs and modified.
-			// http://fluentnhibernate.org/
-
 			MemberExpression memberExpression = null;
-			if( expression.Body.NodeType == ExpressionType.Convert )
+			if( expression.NodeType == ExpressionType.Convert )
 			{
-				var body = (UnaryExpression)expression.Body;
+				var body = (UnaryExpression)expression;
 				memberExpression = body.Operand as MemberExpression;
 			}
-			else if( expression.Body.NodeType == ExpressionType.MemberAccess )
+			else if( expression.NodeType == ExpressionType.MemberAccess )
 			{
-				memberExpression = expression.Body as MemberExpression;
-			}
-
-			if( memberExpression == null )
-			{
-				throw new ArgumentException( "Not a member access", "expression" );
+				memberExpression = expression as MemberExpression;
 			}
 
 			return memberExpression;
 		}
+		
 #endif
 	}
 }

@@ -10,10 +10,11 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>CsvHelper.Tests</RootNamespace>
     <AssemblyName>CsvHelper.Tests</AssemblyName>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\..\src\</SolutionDir>
     <RestorePackages>true</RestorePackages>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -23,6 +24,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -31,6 +33,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup>
     <SignAssembly>true</SignAssembly>
@@ -39,10 +42,15 @@
     <AssemblyOriginatorKeyFile>CsvHelper.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Castle.Core">
-      <HintPath>..\packages\Castle.Core.3.3.0\lib\net40-client\Castle.Core.dll</HintPath>
+    <Reference Include="Castle.Core, Version=3.3.0.0, Culture=neutral, PublicKeyToken=407dd0808d44fbdc, processorArchitecture=MSIL">
+      <HintPath>..\packages\Castle.Core.3.3.3\lib\net45\Castle.Core.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.VisualStudio.QualityTools.UnitTestFramework, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL" />
+    <Reference Include="Moq, Version=4.5.21.0, Culture=neutral, PublicKeyToken=69f491c39445e920, processorArchitecture=MSIL">
+      <HintPath>..\packages\Moq.4.5.21\lib\net45\Moq.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -52,6 +60,9 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Configuration\CsvClassMapCollectionTests.cs" />
+    <Compile Include="Mappings\SubPropertyMappingTests.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="AutoMappingTests.cs" />
     <Compile Include="ClassMapOrderingTests.cs" />
     <Compile Include="CsvClassMappingAutoMapTests.cs" />
@@ -62,7 +73,7 @@
     <Compile Include="Defaults\WritingDefaultsTests.cs" />
     <Compile Include="DynamicProxyTests.cs" />
     <Compile Include="ExcelCompatibility\LeadingZeroTests.cs" />
-    <Compile Include="ExcelCompatibleTests.cs" />
+    <Compile Include="ExcelCompatibility\ExcelCompatibleTests.cs" />
     <Compile Include="CsvParserRawRecordTests.cs" />
     <Compile Include="CsvReaderErrorMessageTests.cs" />
     <Compile Include="CsvReaderMappingTests.cs" />
@@ -91,12 +102,16 @@
     <Compile Include="ParserBadDataTests.cs" />
     <Compile Include="Parsing\CommentTests.cs" />
     <Compile Include="Parsing\DelimiterTests.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Reading\ReadHeaderTests.cs" />
     <Compile Include="Reading\ShouldSkipRecordTests.cs" />
     <Compile Include="Reading\TryGetTests.cs" />
+    <Compile Include="RecordBuilderTests.cs" />
     <Compile Include="ReferenceMappingClassMapTests.cs" />
     <Compile Include="ReferenceMappingIndexTests.cs" />
-    <Compile Include="ReflectionHelperTests.cs" />
+    <Compile Include="Reflection\CreateInstanceTests.cs" />
+    <Compile Include="Reflection\GetMemberExpressionStackTests.cs" />
+    <Compile Include="TypeConversion\ArrayConverterTests.cs" />
+    <Compile Include="TypeConversion\ArrayListConverterTests.cs" />
     <Compile Include="TypeConversion\BooleanConverterTests.cs" />
     <Compile Include="TypeConversion\ByteConverterTests.cs" />
     <Compile Include="TypeConversion\CharConverterTests.cs" />
@@ -104,23 +119,29 @@
     <Compile Include="TypeConversion\EnumConverterTests.cs" />
     <Compile Include="TypeConversion\DateTimeConverterTests.cs" />
     <Compile Include="TypeConversion\EnumerableConverterTests.cs" />
+    <Compile Include="TypeConversion\IDictionaryConverterTests.cs" />
+    <Compile Include="TypeConversion\IDictionaryGenericConverterTests.cs" />
+    <Compile Include="TypeConversion\IEnumerableConverterTests.cs" />
+    <Compile Include="TypeConversion\IEnumerableGenericConverterTests.cs" />
+    <Compile Include="TypeConversion\CollectionGenericConverterTests.cs" />
     <Compile Include="TypeConversion\TimeSpanConverterTests.cs" />
     <Compile Include="TypeConversion\TypeConverterFactoryTests.cs" />
     <Compile Include="TypeConversion\TypeConverterOptionsFactoryTests.cs" />
     <Compile Include="TypeConversion\TypeConverterTests.cs" />
+    <Compile Include="Writing\DynamicTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="CsvHelper.snk" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\CsvHelper\CsvHelper.csproj">
-      <Project>{968A4E7C-B1E9-457E-B1F9-A774E68926C6}</Project>
-      <Name>CsvHelper</Name>
-    </ProjectReference>
+    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
   <ItemGroup>
-    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
+    <ProjectReference Include="..\CsvHelperNCrunch\CsvHelperNCrunch.csproj">
+      <Project>{d65bcb4c-18cf-4aac-8790-cb0bb2ee0088}</Project>
+      <Name>CsvHelperNCrunch</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

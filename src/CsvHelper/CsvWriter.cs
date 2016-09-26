@@ -11,19 +11,18 @@ using System.Reflection;
 using System.Text;
 using CsvHelper.Configuration;
 using CsvHelper.TypeConversion;
-
-#if !NET_2_0
 using System.Linq;
+using System.Runtime.CompilerServices;
+#if !NET_2_0
 using System.Linq.Expressions;
 #endif
-
-#if NET_2_0
-using CsvHelper.MissingFrom20;
+#if !NET_2_0 && !NET_3_5 && !PCL
+using System.Dynamic;
+using Microsoft.CSharp.RuntimeBinder;
 #endif
 
-#if PCL
-using CsvHelper.MissingFromPcl;
-#endif
+#pragma warning disable 649
+#pragma warning disable 169
 
 namespace CsvHelper
 {
@@ -32,6 +31,7 @@ namespace CsvHelper
 	/// </summary>
 	public class CsvWriter : ICsvWriter
 	{
+		private readonly bool leaveOpen;
 		private bool disposed;
 		private readonly List<string> currentRecord = new List<string>();
 		private ICsvSerializer serializer;
@@ -42,55 +42,59 @@ namespace CsvHelper
 #endif
 		private readonly CsvConfiguration configuration;
 		private bool hasExcelSeperatorBeenRead;
+		private int row = 1;
+
+		/// <summary>
+		/// Gets the current row.
+		/// </summary>
+		public virtual int Row => row;
+
+		/// <summary>
+		/// Get the current record;
+		/// </summary>
+		public virtual List<string> CurrentRecord => currentRecord;
 
 		/// <summary>
 		/// Gets the configuration.
 		/// </summary>
-		public virtual CsvConfiguration Configuration
-		{
-			get { return configuration; }
-		}
+		public virtual CsvConfiguration Configuration => configuration;
 
 		/// <summary>
-		/// Creates a new CSV writer using the given <see cref="TextWriter" />,
-		/// a default <see cref="CsvConfiguration"/> and <see cref="CsvSerializer"/>
-		/// as the default serializer.
+		/// Creates a new CSV writer using the given <see cref="TextWriter" />.
 		/// </summary>
 		/// <param name="writer">The writer used to write the CSV file.</param>
-		public CsvWriter( TextWriter writer ) : this( writer, new CsvConfiguration() ) {}
+		public CsvWriter( TextWriter writer ) : this( new CsvSerializer( writer, new CsvConfiguration() ), false ) { }
 
 		/// <summary>
-		/// Creates a new CSV writer using the given <see cref="TextWriter"/>
-		/// and <see cref="CsvConfiguration"/> and <see cref="CsvSerializer"/>
-		/// as the default serializer.
+		/// Creates a new CSV writer using the given <see cref="TextWriter"/>.
+		/// </summary>
+		/// <param name="writer">The writer used to write the CSV file.</param>
+		/// <param name="leaveOpen">true to leave the reader open after the CsvReader object is disposed, otherwise false.</param>
+		public CsvWriter( TextWriter writer, bool leaveOpen ) : this( new CsvSerializer( writer, new CsvConfiguration() ), leaveOpen ) { }
+
+		/// <summary>
+		/// Creates a new CSV writer using the given <see cref="TextWriter"/>.
 		/// </summary>
 		/// <param name="writer">The <see cref="StreamWriter"/> use to write the CSV file.</param>
 		/// <param name="configuration">The configuration.</param>
-		public CsvWriter( TextWriter writer, CsvConfiguration configuration )
-		{
-			if( writer == null )
-			{
-				throw new ArgumentNullException( "writer" );
-			}
-
-			if( configuration == null )
-			{
-				throw new ArgumentNullException( "configuration" );
-			}
-
-			this.configuration = configuration;
-			serializer = new CsvSerializer( writer, configuration );
-		}
+		public CsvWriter( TextWriter writer, CsvConfiguration configuration ) : this( new CsvSerializer( writer, configuration ), false ) { }
 
 		/// <summary>
 		/// Creates a new CSV writer using the given <see cref="ICsvSerializer"/>.
 		/// </summary>
 		/// <param name="serializer">The serializer.</param>
-		public CsvWriter( ICsvSerializer serializer )
+		public CsvWriter( ICsvSerializer serializer ) : this( serializer, false ) { }
+
+		/// <summary>
+		/// Creates a new CSV writer using the given <see cref="ICsvSerializer"/>.
+		/// </summary>
+		/// <param name="serializer">The serializer.</param>
+		/// <param name="leaveOpen">true to leave the reader open after the CsvReader object is disposed, otherwise false.</param>
+		public CsvWriter( ICsvSerializer serializer, bool leaveOpen )
 		{
 			if( serializer == null )
 			{
-				throw new ArgumentNullException( "serializer" );
+				throw new ArgumentNullException( nameof( serializer ) );
 			}
 
 			if( serializer.Configuration == null )
@@ -100,6 +104,26 @@ namespace CsvHelper
 
 			this.serializer = serializer;
 			configuration = serializer.Configuration;
+			this.leaveOpen = leaveOpen;
+		}
+
+		/// <summary>
+		/// Writes a field that has already been converted to a
+		/// <see cref="string"/> from an <see cref="ITypeConverter"/>.
+		/// If the field is null, it won't get written. A type converter 
+		/// will always return a string, even if field is null. If the 
+		/// converter returns a null, it means that the converter has already
+		/// written data, and the returned value should not be written.
+		/// </summary>
+		/// <param name="field">The converted field to write.</param>
+		public virtual void WriteConvertedField( string field )
+		{
+			if( field == null )
+			{
+				return;
+			}
+
+			WriteField( field );
 		}
 
 		/// <summary>
@@ -112,11 +136,9 @@ namespace CsvHelper
 		/// <param name="field">The field to write.</param>
 		public virtual void WriteField( string field )
 		{
-			CheckDisposed();
-
 			var shouldQuote = configuration.QuoteAllFields;
 
-			if( configuration.TrimFields )
+			if( field != null && configuration.TrimFields )
 			{
 				field = field.Trim();
 			}
@@ -153,8 +175,6 @@ namespace CsvHelper
 		/// <param name="shouldQuote">True to quote the field, otherwise false.</param>
 		public virtual void WriteField( string field, bool shouldQuote )
 		{
-			CheckDisposed();
-
             // All quotes must be doubled.       
 			if( shouldQuote && !string.IsNullOrEmpty( field ) )
 			{
@@ -183,18 +203,9 @@ namespace CsvHelper
 		/// <param name="field">The field to write.</param>
 		public virtual void WriteField<T>( T field )
 		{
-			CheckDisposed();
-
-			var type = field.GetType();
-			if( type == typeof( string ) )
-			{
-				WriteField( field as string );
-			}
-			else
-			{
-				var converter = TypeConverterFactory.GetConverter( type );
-				WriteField( field, converter );
-			}
+			var type = field == null ? typeof( string ) : field.GetType();
+			var converter = TypeConverterFactory.GetConverter( type );
+			WriteField( field, converter );
 		}
 
 		/// <summary>
@@ -208,16 +219,16 @@ namespace CsvHelper
 		/// <param name="converter">The converter used to convert the field into a string.</param>
 		public virtual void WriteField<T>( T field, ITypeConverter converter )
 		{
-			CheckDisposed();
-
-			var typeConverterOptions = TypeConverterOptionsFactory.GetOptions( field.GetType() );
-			if( typeConverterOptions.CultureInfo == null )
+			var type = field == null ? typeof( string ) : field.GetType();
+			var propertyMapData = new CsvPropertyMapData( null )
 			{
-				typeConverterOptions.CultureInfo = configuration.CultureInfo;
-			}
+				TypeConverter = converter,
+				TypeConverterOptions = { CultureInfo = configuration.CultureInfo }
+			};
+			propertyMapData.TypeConverterOptions = TypeConverterOptions.Merge( propertyMapData.TypeConverterOptions, configuration.TypeConverterOptionsFactory.GetOptions( type ) );
 
-			var fieldString = converter.ConvertToString( typeConverterOptions, field );
-			WriteField( fieldString );
+			var fieldString = converter.ConvertToString( field, this, propertyMapData );
+			WriteConvertedField( fieldString );
 		}
 
 		/// <summary>
@@ -232,80 +243,35 @@ namespace CsvHelper
 		/// <param name="field">The field to write.</param>
 		public virtual void WriteField<T, TConverter>( T field )
 		{
-			CheckDisposed();
-
 			var converter = TypeConverterFactory.GetConverter<TConverter>();
 			WriteField( field, converter );
 		}
 
-		/// <summary>
-		/// Writes the field to the CSV file.
-		/// When all fields are written for a record,
-		/// <see cref="ICsvWriter.NextRecord" /> must be called
-		/// to complete writing of the current record.
-		/// </summary>
-		/// <param name="type">The type of the field.</param>
-		/// <param name="field">The field to write.</param>
-		[Obsolete( "This method is deprecated and will be removed in the next major release. Use WriteField<T>( T field ) instead.", false )]
-		public virtual void WriteField( Type type, object field )
+	    /// <summary>
+	    /// Ends writing of the current record and starts a new record. 
+	    /// This needs to be called to serialize the row to the writer.
+	    /// </summary>
+	    public virtual void NextRecord()
 		{
-			CheckDisposed();
-
-			if( type == typeof( string ) )
-			{
-				WriteField( field as string );
-			}
-			else
-			{
-				var converter = TypeConverterFactory.GetConverter( type );
-				WriteField( type, field, converter );
-			}
+	        try
+	        {
+	            serializer.Write( currentRecord.ToArray() );
+	            currentRecord.Clear();
+	            row++;
+	        }
+	        catch( Exception ex )
+	        {
+	            var csvHelperException = ex as CsvHelperException ?? new CsvWriterException( "An unexpected error occurred.", ex );
+	            ExceptionHelper.AddExceptionData( csvHelperException, Row, null, null, null, currentRecord.ToArray() );
+	            throw csvHelperException;
+	        }
 		}
 
-		/// <summary>
-		/// Writes the field to the CSV file.
-		/// When all fields are written for a record,
-		/// <see cref="ICsvWriter.NextRecord" /> must be called
-		/// to complete writing of the current record.
-		/// </summary>
-		/// <param name="type">The type of the field.</param>
-		/// <param name="field">The field to write.</param>
-		/// <param name="converter">The converter used to convert the field into a string.</param>
-		[Obsolete( "This method is deprecated and will be removed in the next major release. Use WriteField<T>( T field, ITypeConverter converter ) instead.", false )]
-		public virtual void WriteField( Type type, object field, ITypeConverter converter )
+        /// <summary>
+        /// Write the Excel seperator record.
+        /// </summary>
+        public virtual void WriteExcelSeparator()
 		{
-			CheckDisposed();
-
-			var typeConverterOptions = TypeConverterOptionsFactory.GetOptions( type );
-			if( typeConverterOptions.CultureInfo == null )
-			{
-				typeConverterOptions.CultureInfo = configuration.CultureInfo;
-			}
-
-			var fieldString = converter.ConvertToString( typeConverterOptions, field );
-			WriteField( fieldString );
-		}
-
-		/// <summary>
-		/// Ends writing of the current record
-		/// and starts a new record. This is used
-		/// when manually writing records with WriteField.
-		/// </summary>
-		public virtual void NextRecord()
-		{
-			CheckDisposed();
-
-			serializer.Write( currentRecord.ToArray() );
-			currentRecord.Clear();
-		}
-
-		/// <summary>
-		/// Write the Excel seperator record.
-		/// </summary>
-		public virtual void WriteExcelSeparator()
-		{
-			CheckDisposed();
-
 			if( hasHeaderBeenWritten )
 			{
 				throw new CsvWriterException( "The Excel seperator record must be the first record written in the file." );
@@ -317,19 +283,25 @@ namespace CsvHelper
 			}
 
 			WriteField( "sep=" + configuration.Delimiter, false );
-
-			NextRecord();
 		}
 
-#if !NET_2_0
-		/// <summary>
-		/// Writes the header record from the given properties.
-		/// </summary>
-		/// <typeparam name="T">The type of the record.</typeparam>
-		public virtual void WriteHeader<T>()
-		{
-			CheckDisposed();
+	    /// <summary>
+	    /// Writes a comment.
+	    /// </summary>
+	    /// <param name="comment">The comment to write.</param>
+	    public virtual void WriteComment( string comment )
+	    {
+	        WriteField( configuration.Comment + comment );
+	    }
 
+#if !NET_2_0
+
+        /// <summary>
+        /// Writes the header record from the given properties.
+        /// </summary>
+        /// <typeparam name="T">The type of the record.</typeparam>
+        public virtual void WriteHeader<T>()
+		{
 			WriteHeader( typeof( T ) );
 		}
 
@@ -339,11 +311,9 @@ namespace CsvHelper
 		/// <param name="type">The type of the record.</param>
 		public virtual void WriteHeader( Type type )
 		{
-			CheckDisposed();
-
 			if( type == null )
 			{
-				throw new ArgumentNullException( "type" );
+				throw new ArgumentNullException( nameof( type ) );
 			}
 
 			if( !configuration.HasHeaderRecord )
@@ -361,7 +331,7 @@ namespace CsvHelper
 				throw new CsvWriterException( "Records have already been written. You can't write the header after writing records has started." );
 			}
 
-			if( type == typeof( Object ) )
+			if( type == typeof( object ) )
 			{
 				return;
 			}
@@ -378,14 +348,63 @@ namespace CsvHelper
 			{
 				if( CanWrite( property ) )
 				{
-					WriteField( property.Data.Names.FirstOrDefault() );
+					if( property.Data.IndexEnd >= property.Data.Index )
+					{
+						var count = property.Data.IndexEnd - property.Data.Index + 1;
+						for( var i = 1; i <= count; i++ )
+						{
+							WriteField( property.Data.Names.FirstOrDefault() + i );
+						}
+					}
+					else
+					{
+						WriteField( property.Data.Names.FirstOrDefault() );
+					}
 				}
 			}
 
-			NextRecord();
+			hasHeaderBeenWritten = true;
+		}
+
+#if !NET_2_0 && !NET_3_5 && !PCL
+
+		/// <summary>
+		/// Writes the header record for the given dynamic object.
+		/// </summary>
+		/// <param name="record">The dynamic record to write.</param>
+		public virtual void WriteDynamicHeader( IDynamicMetaObjectProvider record )
+		{
+			if( record == null )
+			{
+				throw new ArgumentNullException( nameof( record ) );
+			}
+
+			if( !configuration.HasHeaderRecord )
+			{
+				throw new CsvWriterException( "Configuration.HasHeaderRecord is false. This will need to be enabled to write the header." );
+			}
+
+			if( hasHeaderBeenWritten )
+			{
+				throw new CsvWriterException( "The header record has already been written. You can't write it more than once." );
+			}
+
+			if( hasRecordBeenWritten )
+			{
+				throw new CsvWriterException( "Records have already been written. You can't write the header after writing records has started." );
+			}
+
+			var metaObject = record.GetMetaObject( Expression.Constant( record ) );
+			var names = metaObject.GetDynamicMemberNames();
+			foreach( var name in names )
+			{
+				WriteField( name );
+			}
 
 			hasHeaderBeenWritten = true;
 		}
+
+#endif
 
 		/// <summary>
 		/// Writes the record to the CSV file.
@@ -394,49 +413,29 @@ namespace CsvHelper
 		/// <param name="record">The record to write.</param>
 		public virtual void WriteRecord<T>( T record )
 		{
-			CheckDisposed();
+#if !NET_2_0 && !NET_3_5 && !PCL
+			var dynamicRecord = record as IDynamicMetaObjectProvider;
+			if( dynamicRecord != null )
+			{
+				if( configuration.HasHeaderRecord && !hasHeaderBeenWritten )
+				{
+					WriteDynamicHeader( dynamicRecord );
+				    NextRecord();
+				}
+			}
+#endif
 
 			try
 			{
-				GetWriteRecordAction<T>()( record );
-				hasRecordBeenWritten = true;
-				NextRecord();
-			}
-			catch( Exception ex )
+				GetWriteRecordAction( record ).DynamicInvoke( record );
+                hasRecordBeenWritten = true;
+            }
+            catch( Exception ex )
 			{
-				ExceptionHelper.AddExceptionDataMessage( ex, null, record.GetType(), null, null, null );
-				throw;
-			}
-		}
+				var csvHelperException = ex as CsvHelperException ?? new CsvWriterException( "An unexpected error occurred.", ex );
+				ExceptionHelper.AddExceptionData( csvHelperException, Row, record.GetType(), null, null, currentRecord.ToArray() );
 
-		/// <summary>
-		/// Writes the record to the CSV file.
-		/// </summary>
-		/// <param name="type">The type of the record.</param>
-		/// <param name="record">The record to write.</param>
-		[Obsolete( "This method is deprecated and will be removed in the next major release. Use WriteRecord<T>( T record ) instead.", false )]
-		public virtual void WriteRecord( Type type, object record )
-		{
-			CheckDisposed();
-
-			try
-			{
-				try
-				{
-					GetWriteRecordAction( type ).DynamicInvoke( record );
-				}
-				catch( TargetInvocationException ex )
-				{
-					throw ex.InnerException;
-				}
-
-				hasRecordBeenWritten = true;
-				NextRecord();
-			}
-			catch( Exception ex )
-			{
-				ExceptionHelper.AddExceptionDataMessage( ex, null, type, null, null, null );
-				throw;
+				throw csvHelperException;
 			}
 		}
 
@@ -446,44 +445,68 @@ namespace CsvHelper
 		/// <param name="records">The list of records to write.</param>
 		public virtual void WriteRecords( IEnumerable records )
 		{
-			CheckDisposed();
-
 			Type recordType = null;
 			try
 			{
 				if( configuration.HasExcelSeparator && !hasExcelSeperatorBeenRead )
 				{
 					WriteExcelSeparator();
-					hasExcelSeperatorBeenRead = true;
+                    NextRecord();
+                    hasExcelSeperatorBeenRead = true;
 				}
 
 				// Write the header. If records is a List<dynamic>, the header won't be written.
 				// This is because typeof( T ) = Object.
-				var genericEnumerable = records.GetType().GetInterfaces().FirstOrDefault( t => t.IsGenericType && t.GetGenericTypeDefinition() == typeof( IEnumerable<> ) );
+				var genericEnumerable = records.GetType().GetInterfaces().FirstOrDefault( t => t.GetTypeInfo().IsGenericType && t.GetGenericTypeDefinition() == typeof( IEnumerable<> ) );
 				if( genericEnumerable != null )
 				{
 					recordType = genericEnumerable.GetGenericArguments().Single();
-					if( configuration.HasHeaderRecord && !hasHeaderBeenWritten && !recordType.IsPrimitive )
+					var isPrimitive = recordType.GetTypeInfo().IsPrimitive;
+					if( configuration.HasHeaderRecord && !hasHeaderBeenWritten && !isPrimitive && recordType != typeof( object ) )
 					{
 						WriteHeader( recordType );
+                        if( hasHeaderBeenWritten )
+                        {
+                            NextRecord();
+                        }
 					}
 				}
 
 				foreach( var record in records )
 				{
-					// If records is a List<dynamic>, the header hasn't been written yet.
-					// Write the header based on the record type.
 					recordType = record.GetType();
-					if( configuration.HasHeaderRecord && !hasHeaderBeenWritten && !recordType.IsPrimitive )
-					{
-						WriteHeader( recordType );
-					}
 
-					try
+#if !NET_3_5 && !PCL
+
+					var dynamicObject = record as IDynamicMetaObjectProvider;
+					if( dynamicObject != null )
 					{
-						GetWriteRecordAction( record.GetType() ).DynamicInvoke( record );
+						if( configuration.HasHeaderRecord && !hasHeaderBeenWritten )
+						{
+							WriteDynamicHeader( dynamicObject );
+                            NextRecord();
+						}
 					}
-					catch( TargetInvocationException ex )
+					else
+					{
+#endif
+						// If records is a List<dynamic>, the header hasn't been written yet.
+						// Write the header based on the record type.
+						var isPrimitive = recordType.GetTypeInfo().IsPrimitive;
+						if( configuration.HasHeaderRecord && !hasHeaderBeenWritten && !isPrimitive )
+						{
+							WriteHeader( recordType );
+                            NextRecord();
+						}
+#if !NET_3_5 && !PCL
+					}
+#endif
+
+                    try
+					{
+						GetWriteRecordAction( record ).DynamicInvoke( record );
+                    }
+                    catch( TargetInvocationException ex )
 					{
 						throw ex.InnerException;
 					}
@@ -493,13 +516,15 @@ namespace CsvHelper
 			}
 			catch( Exception ex )
 			{
-				ExceptionHelper.AddExceptionDataMessage( ex, null, recordType, null, null, null );
-				throw;
+				var csvHelperException = ex as CsvHelperException ?? new CsvWriterException( "An unexpected error occurred.", ex );
+				ExceptionHelper.AddExceptionData( csvHelperException, Row, recordType, null, null, currentRecord.ToArray() );
+
+				throw csvHelperException;
 			}
 		}
 
 		/// <summary>
-		/// Clears the record cache for the given type. After <see cref="ICsvWriter.WriteRecord{T}"/> is called the
+		/// Clears the record cache for the given type. After <see cref="ICsvWriterRow.WriteRecord{T}"/> is called the
 		/// first time, code is dynamically generated based on the <see cref="CsvPropertyMapCollection"/>,
 		/// compiled, and stored for the given type T. If the <see cref="CsvPropertyMapCollection"/>
 		/// changes, <see cref="ICsvWriter.ClearRecordCache{T}"/> needs to be called to update the
@@ -508,13 +533,11 @@ namespace CsvHelper
 		/// <typeparam name="T">The record type.</typeparam>
 		public virtual void ClearRecordCache<T>()
 		{
-			CheckDisposed();
-
 			ClearRecordCache( typeof( T ) );
 		}
 
 		/// <summary>
-		/// Clears the record cache for the given type. After <see cref="ICsvWriter.WriteRecord{T}"/> is called the
+		/// Clears the record cache for the given type. After <see cref="ICsvWriterRow.WriteRecord{T}"/> is called the
 		/// first time, code is dynamically generated based on the <see cref="CsvPropertyMapCollection"/>,
 		/// compiled, and stored for the given type T. If the <see cref="CsvPropertyMapCollection"/>
 		/// changes, <see cref="ICsvWriter.ClearRecordCache(System.Type)"/> needs to be called to update the
@@ -523,13 +546,11 @@ namespace CsvHelper
 		/// <param name="type">The record type.</param>
 		public virtual void ClearRecordCache( Type type )
 		{
-			CheckDisposed();
-
 			typeActions.Remove( type );
 		}
 
 		/// <summary>
-		/// Clears the record cache for all types. After <see cref="ICsvWriter.WriteRecord{T}"/> is called the
+		/// Clears the record cache for all types. After <see cref="ICsvWriterRow.WriteRecord{T}"/> is called the
 		/// first time, code is dynamically generated based on the <see cref="CsvPropertyMapCollection"/>,
 		/// compiled, and stored for the given type T. If the <see cref="CsvPropertyMapCollection"/>
 		/// changes, <see cref="ICsvWriter.ClearRecordCache()"/> needs to be called to update the
@@ -537,8 +558,6 @@ namespace CsvHelper
 		/// </summary>
 		public virtual void ClearRecordCache()
 		{
-			CheckDisposed();
-
 			typeActions.Clear();
 		}
 
@@ -586,16 +605,15 @@ namespace CsvHelper
 					continue;
 				}
 
-				var isReferenceValueType = refMap.Data.Property.PropertyType.IsValueType;
-				if( isReferenceValueType )
+				if( refMap.Data.Property.PropertyType.GetTypeInfo().IsValueType )
 				{
 					return propertyExpression;
 				}
 
 				var nullCheckExpression = Expression.Equal( wrapped, Expression.Constant( null ) );
 
-				var isValueType = propertyMap.Data.Property.PropertyType.IsValueType;
-				var isGenericType = isValueType && propertyMap.Data.Property.PropertyType.IsGenericType;
+				var isValueType = propertyMap.Data.Property.PropertyType.GetTypeInfo().IsValueType;
+				var isGenericType = isValueType && propertyMap.Data.Property.PropertyType.GetTypeInfo().IsGenericType;
 				Type propertyType;
 				if( isValueType && !isGenericType && !configuration.UseNewObjectForNullReferenceProperties )
 				{
@@ -616,6 +634,7 @@ namespace CsvHelper
 
 			return null;
 		}
+
 #endif
 
 		/// <summary>
@@ -624,7 +643,7 @@ namespace CsvHelper
 		/// <filterpriority>2</filterpriority>
 		public void Dispose()
 		{
-			Dispose( true );
+			Dispose( !leaveOpen );
 			GC.SuppressFinalize( this );
 		}
 
@@ -641,54 +660,37 @@ namespace CsvHelper
 
 			if( disposing )
 			{
-				if( serializer != null )
-				{
-					serializer.Dispose();
-				}
+				serializer?.Dispose();
 			}
 
 			disposed = true;
 			serializer = null;
 		}
 
-		/// <summary>
-		/// Checks if the instance has been disposed of.
-		/// </summary>
-		/// <exception cref="ObjectDisposedException" />
-		protected virtual void CheckDisposed()
-		{
-			if( disposed )
-			{
-				throw new ObjectDisposedException( GetType().ToString() );
-			}
-		}
-
 #if !NET_2_0
+
 		/// <summary>
 		/// Gets the action delegate used to write the custom
 		/// class object to the writer.
 		/// </summary>
 		/// <typeparam name="T">The type of the custom class being written.</typeparam>
+		/// <param name="record"></param>
 		/// <returns>The action delegate.</returns>
-		protected virtual Action<T> GetWriteRecordAction<T>()
+		protected virtual Delegate GetWriteRecordAction<T>( T record )
 		{
 			var type = typeof( T );
-			CreateWriteRecordAction( type );
+			if( type == typeof( object ) )
+			{
+				type = record.GetType();
+			}
 
-			return (Action<T>)typeActions[type];
-		}
+			Delegate action;
+			if( !typeActions.TryGetValue( type, out action ) )
+			{
+				action = CreateWriteRecordAction( type, record );
+			}
 
-		/// <summary>
-		/// Gets the action delegate used to write the custom
-		/// class object to the writer.
-		/// </summary>
-		/// <param name="type">The type of the custom class being written.</param>
-		/// <returns>The action delegate.</returns>
-		protected virtual Delegate GetWriteRecordAction( Type type )
-		{
-			CreateWriteRecordAction( type );
-
-			return typeActions[type];
+			return action;
 		}
 
 		/// <summary>
@@ -696,12 +698,24 @@ namespace CsvHelper
 		/// doesn't already exist.
 		/// </summary>
 		/// <param name="type">The type of the custom class being written.</param>
-		protected virtual void CreateWriteRecordAction( Type type )
+		/// <param name="record">The record that will be written.</param>
+		protected virtual Delegate CreateWriteRecordAction<T>( Type type, T record )
 		{
-			if( typeActions.ContainsKey( type ) )
+#if !NET_3_5 && !PCL
+
+			var expandoObject = record as ExpandoObject;
+			if( expandoObject != null )
 			{
-				return;
+				return CreateActionForExpandoObject( expandoObject );
 			}
+			
+			var dynamicObject = record as IDynamicMetaObjectProvider;
+			if( dynamicObject != null )
+			{
+				return CreateActionForDynamic( dynamicObject );
+			}
+
+#endif
 
 			if( configuration.Maps[type] == null )
 			{
@@ -709,21 +723,19 @@ namespace CsvHelper
 				configuration.Maps.Add( configuration.AutoMap( type ) );
 			}
 
-			if( type.IsPrimitive )
+			if( type.GetTypeInfo().IsPrimitive )
 			{
-				CreateActionForPrimitive( type );
+				return CreateActionForPrimitive( type );
 			}
-			else
-			{
-				CreateActionForObject( type );
-			}
+
+			return CreateActionForObject( type );
 		}
 
 		/// <summary>
 		/// Creates the action for an object.
 		/// </summary>
 		/// <param name="type">The type of object to create the action for.</param>
-		protected virtual void CreateActionForObject( Type type )
+		protected virtual Delegate CreateActionForObject( Type type )
 		{
 			var recordParameter = Expression.Parameter( type, "record" );
 
@@ -734,7 +746,7 @@ namespace CsvHelper
 
 			if( properties.Count == 0 )
 			{
-				throw new CsvWriterException( string.Format( "No properties are mapped for type '{0}'.", type.FullName ) );
+				throw new CsvWriterException( $"No properties are mapped for type '{type.FullName}'." );
 			}
 
 			var delegates = new List<Delegate>();
@@ -746,7 +758,7 @@ namespace CsvHelper
 					continue;
 				}
 
-				if( propertyMap.Data.TypeConverter == null || !propertyMap.Data.TypeConverter.CanConvertTo( typeof( string ) ) )
+				if( propertyMap.Data.TypeConverter == null )
 				{
 					// Skip if the type isn't convertible.
 					continue;
@@ -760,33 +772,35 @@ namespace CsvHelper
 					propertyMap.Data.TypeConverterOptions.CultureInfo = configuration.CultureInfo;
 				}
 
-				var typeConverterOptions = TypeConverterOptions.Merge( TypeConverterOptionsFactory.GetOptions( propertyMap.Data.Property.PropertyType ), propertyMap.Data.TypeConverterOptions );
-				var typeConverterOptionsExpression = Expression.Constant( typeConverterOptions );
+				propertyMap.Data.TypeConverterOptions = TypeConverterOptions.Merge( propertyMap.Data.TypeConverterOptions, configuration.TypeConverterOptionsFactory.GetOptions( propertyMap.Data.Property.PropertyType ), propertyMap.Data.TypeConverterOptions );
 
 				var method = propertyMap.Data.TypeConverter.GetType().GetMethod( "ConvertToString" );
 				fieldExpression = Expression.Convert( fieldExpression, typeof( object ) );
-				fieldExpression = Expression.Call( typeConverterExpression, method, typeConverterOptionsExpression, fieldExpression );
+				fieldExpression = Expression.Call( typeConverterExpression, method, fieldExpression, Expression.Constant( this ), Expression.Constant( propertyMap.Data ) );
 
-				if( type.IsClass )
+				if( type.GetTypeInfo().IsClass )
 				{
 					var areEqualExpression = Expression.Equal( recordParameter, Expression.Constant( null ) );
 					fieldExpression = Expression.Condition( areEqualExpression, Expression.Constant( string.Empty ), fieldExpression );
 				}
 
-				var writeFieldMethodCall = Expression.Call( Expression.Constant( this ), "WriteField", new[] { typeof( string ) }, fieldExpression );
+				var writeFieldMethodCall = Expression.Call( Expression.Constant( this ), "WriteConvertedField", null, fieldExpression );
 
 				var actionType = typeof( Action<> ).MakeGenericType( type );
 				delegates.Add( Expression.Lambda( actionType, writeFieldMethodCall, recordParameter ).Compile() );
 			}
 
-			typeActions[type] = CombineDelegates( delegates );
+			var action = CombineDelegates( delegates );
+			typeActions[type] = action;
+
+			return action;
 		}
 
 		/// <summary>
 		/// Creates the action for a primitive.
 		/// </summary>
 		/// <param name="type">The type of primitive to create the action for.</param>
-		protected virtual void CreateActionForPrimitive( Type type )
+		protected virtual Delegate CreateActionForPrimitive( Type type )
 		{
 			var recordParameter = Expression.Parameter( type, "record" );
 
@@ -796,19 +810,83 @@ namespace CsvHelper
 			var typeConverterExpression = Expression.Constant( typeConverter );
 			var method = typeConverter.GetType().GetMethod( "ConvertToString" );
 
-			var typeConverterOptions = TypeConverterOptionsFactory.GetOptions( type );
-			if( typeConverterOptions.CultureInfo == null )
+			var propertyMapData = new CsvPropertyMapData( null )
 			{
-				typeConverterOptions.CultureInfo = configuration.CultureInfo;
-			}
+				Index = 0,
+				TypeConverter = typeConverter,
+				TypeConverterOptions = { CultureInfo = configuration.CultureInfo }
+			};
+			propertyMapData.TypeConverterOptions = TypeConverterOptions.Merge( propertyMapData.TypeConverterOptions, configuration.TypeConverterOptionsFactory.GetOptions( type ) );
 
-			fieldExpression = Expression.Call( typeConverterExpression, method, Expression.Constant( typeConverterOptions ), fieldExpression );
-
-			fieldExpression = Expression.Call( Expression.Constant( this ), "WriteField", new[] { typeof( string ) }, fieldExpression );
+			fieldExpression = Expression.Call( typeConverterExpression, method, fieldExpression, Expression.Constant( this ), Expression.Constant( propertyMapData ) );
+			fieldExpression = Expression.Call( Expression.Constant( this ), "WriteConvertedField", null, fieldExpression );
 
 			var actionType = typeof( Action<> ).MakeGenericType( type );
-			typeActions[type] = Expression.Lambda( actionType, fieldExpression, recordParameter ).Compile();
+			var action = Expression.Lambda( actionType, fieldExpression, recordParameter ).Compile();
+			typeActions[type] = action;
+
+			return action;
 		}
+
+#if !NET_2_0 && !NET_3_5 && !PCL
+
+		/// <summary>
+		/// Creates an action for an ExpandoObject. This needs to be separate
+		/// from other dynamic objects due to what seems to be an issue in ExpandoObject
+		/// where expandos with the same properties sometimes test as not equal.
+		/// </summary>
+		/// <param name="obj">The ExpandoObject.</param>
+		/// <returns></returns>
+		protected virtual Delegate CreateActionForExpandoObject( ExpandoObject obj )
+		{
+			Action<object> action = record =>
+			{
+				var dict = (IDictionary<string, object>)record;
+				foreach( var val in dict.Values )
+				{
+					WriteField( val );
+				}
+			};
+
+			typeActions[typeof( ExpandoObject )] = action;
+
+			return action;
+		}
+
+		/// <summary>
+		/// Creates the action for a dynamic object.
+		/// </summary>
+		/// <param name="provider">The dynamic object.</param>
+		protected virtual Delegate CreateActionForDynamic( IDynamicMetaObjectProvider provider )
+		{
+			// http://stackoverflow.com/a/14011692/68499
+
+			var type = provider.GetType();
+			var parameterExpression = Expression.Parameter( typeof( object ), "record" );
+
+			var metaObject = provider.GetMetaObject( parameterExpression );
+			var propertyNames = metaObject.GetDynamicMemberNames();
+
+			var delegates = new List<Delegate>();
+			foreach( var propertyName in propertyNames )
+			{
+				var getMemberBinder = (GetMemberBinder)Microsoft.CSharp.RuntimeBinder.Binder.GetMember( 0, propertyName, type, new[] { CSharpArgumentInfo.Create( 0, null ) } );
+				var getMemberMetaObject = metaObject.BindGetMember( getMemberBinder );
+				var fieldExpression = getMemberMetaObject.Expression;
+				fieldExpression = Expression.Call( Expression.Constant( this ), "WriteField", new[] { typeof( object ) }, fieldExpression );
+				fieldExpression = Expression.Block( fieldExpression, Expression.Label( CallSiteBinder.UpdateLabel ) );
+				var lambda = Expression.Lambda( fieldExpression, parameterExpression );
+				delegates.Add( lambda.Compile() );
+			}
+
+			var action = CombineDelegates( delegates );
+
+			typeActions[type] = action;
+
+			return action;
+		}
+
+#endif
 
 		/// <summary>
 		/// Combines the delegates into a single multicast delegate.
@@ -840,6 +918,8 @@ namespace CsvHelper
 				propertyMap.Data.Property.GetGetMethod( true ) == null;
 			return !cantWrite;
 		}
+
 #endif
+
 	}
 }

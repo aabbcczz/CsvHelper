@@ -2,9 +2,14 @@
 // This file is a part of CsvHelper and is dual licensed under MS-PL and Apache 2.0.
 // See LICENSE.txt for details or visit http://www.opensource.org/licenses/ms-pl.html for MS-PL and http://opensource.org/licenses/Apache-2.0 for Apache 2.0.
 // http://csvhelper.com
+#if !NET_2_0
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
 
 namespace CsvHelper.Configuration
 {
@@ -16,6 +21,22 @@ namespace CsvHelper.Configuration
 	{
 		private readonly List<CsvPropertyMap> list = new List<CsvPropertyMap>();
 		private readonly IComparer<CsvPropertyMap> comparer;
+
+		/// <summary>
+		/// Gets the number of elements contained in the <see cref="T:System.Collections.Generic.ICollection`1"/>.
+		/// </summary>
+		/// <returns>
+		/// The number of elements contained in the <see cref="T:System.Collections.Generic.ICollection`1"/>.
+		/// </returns>
+		public virtual int Count => list.Count;
+
+		/// <summary>
+		/// Gets a value indicating whether the <see cref="T:System.Collections.Generic.ICollection`1"/> is read-only.
+		/// </summary>
+		/// <returns>
+		/// true if the <see cref="T:System.Collections.Generic.ICollection`1"/> is read-only; otherwise, false.
+		/// </returns>
+		public virtual bool IsReadOnly => false;
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="CsvPropertyMapCollection"/> class.
@@ -124,28 +145,6 @@ namespace CsvHelper.Configuration
 		}
 
 		/// <summary>
-		/// Gets the number of elements contained in the <see cref="T:System.Collections.Generic.ICollection`1"/>.
-		/// </summary>
-		/// <returns>
-		/// The number of elements contained in the <see cref="T:System.Collections.Generic.ICollection`1"/>.
-		/// </returns>
-		public virtual int Count
-		{
-			get { return list.Count; }
-		}
-
-		/// <summary>
-		/// Gets a value indicating whether the <see cref="T:System.Collections.Generic.ICollection`1"/> is read-only.
-		/// </summary>
-		/// <returns>
-		/// true if the <see cref="T:System.Collections.Generic.ICollection`1"/> is read-only; otherwise, false.
-		/// </returns>
-		public virtual bool IsReadOnly
-		{
-			get { return false; }
-		}
-
-		/// <summary>
 		/// Determines the index of a specific item in the <see cref="T:System.Collections.Generic.IList`1"/>.
 		/// </summary>
 		/// <returns>
@@ -198,5 +197,37 @@ namespace CsvHelper.Configuration
 			get { return list[index]; }
 			set { list[index] = value; }
 		}
+
+		/// <summary>
+		/// Finds the <see cref="CsvPropertyMap"/> using the given property expression.
+		/// </summary>
+		/// <typeparam name="T">The <see cref="System.Type"/> the property is on.</typeparam>
+		/// <param name="expression">The property expression.</param>
+		/// <returns>The <see cref="CsvPropertyMap"/> for the given expression, or null if not found.</returns>
+		public virtual CsvPropertyMap Find<T>( Expression<Func<T, object>> expression )
+		{
+			var property = ReflectionHelper.GetProperty( expression );
+			return Find( property );
+		}
+
+		/// <summary>
+		/// Finds the <see cref="CsvPropertyMap"/> using the given property.
+		/// </summary>
+		/// <param name="property">The property.</param>
+		/// <returns>The <see cref="CsvPropertyMap"/> for the given expression, or null if not found.</returns>
+		public virtual CsvPropertyMap Find( PropertyInfo property )
+		{
+			var existingMap = list.SingleOrDefault( m =>
+				m.Data.Property == property ||
+				m.Data.Property.Name == property.Name &&
+				(
+					m.Data.Property.DeclaringType.IsAssignableFrom( property.DeclaringType ) ||
+					property.DeclaringType.IsAssignableFrom( m.Data.Property.DeclaringType )
+				)
+			);
+
+			return existingMap;
+		}
 	}
 }
+#endif // !NET_2_0

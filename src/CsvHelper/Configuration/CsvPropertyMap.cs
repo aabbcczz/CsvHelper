@@ -2,7 +2,9 @@
 // This file is a part of CsvHelper and is dual licensed under MS-PL and Apache 2.0.
 // See LICENSE.txt for details or visit http://www.opensource.org/licenses/ms-pl.html for MS-PL and http://opensource.org/licenses/Apache-2.0 for Apache 2.0.
 // http://csvhelper.com
+#if !NET_2_0
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -19,27 +21,22 @@ namespace CsvHelper.Configuration
 	[DebuggerDisplay( "Names = {string.Join(\",\", Data.Names)}, Index = {Data.Index}, Ignore = {Data.Ignore}, Property = {Data.Property}, TypeConverter = {Data.TypeConverter}" )]
 	public class CsvPropertyMap
 	{
-		private readonly CsvPropertyMapData data;
-
 		/// <summary>
 		/// Gets the property map data.
 		/// </summary>
-		public CsvPropertyMapData Data
-		{
-			get { return data; }
-		}
+		public CsvPropertyMapData Data { get; }
 
 		/// <summary>
 		/// Creates a new <see cref="CsvPropertyMap"/> instance using the specified property.
 		/// </summary>
 		public CsvPropertyMap( PropertyInfo property )
 		{
-			data = new CsvPropertyMapData( property )
+			Data = new CsvPropertyMapData( property )
 			{
 				// Set some defaults.
 				TypeConverter = TypeConverterFactory.GetConverter( property.PropertyType )
 			};
-			data.Names.Add( property.Name );
+			Data.Names.Add( property.Name );
 		}
 
 		/// <summary>
@@ -56,12 +53,12 @@ namespace CsvHelper.Configuration
 		{
 			if( names == null || names.Length == 0 )
 			{
-				throw new ArgumentNullException( "names" );
+				throw new ArgumentNullException( nameof( names ) );
 			}
 
-			data.Names.Clear();
-			data.Names.AddRange( names );
-			data.IsNameSet = true;
+			Data.Names.Clear();
+			Data.Names.AddRange( names );
+			Data.IsNameSet = true;
 			return this;
 		}
 
@@ -73,7 +70,7 @@ namespace CsvHelper.Configuration
 		/// <param name="index">The index of the name.</param>
 		public virtual CsvPropertyMap NameIndex( int index )
 		{
-			data.NameIndex = index;
+			Data.NameIndex = index;
 			return this;
 		}
 
@@ -84,10 +81,12 @@ namespace CsvHelper.Configuration
 		/// indexes.
 		/// </summary>
 		/// <param name="index">The index of the CSV field.</param>
-		public virtual CsvPropertyMap Index( int index )
+		/// <param name="indexEnd">The end index used when mapping to an <see cref="IEnumerable"/> property.</param>
+		public virtual CsvPropertyMap Index( int index, int indexEnd = -1 )
 		{
-			data.Index = index;
-			data.IsIndexSet = true;
+			Data.Index = index;
+			Data.IsIndexSet = true;
+			Data.IndexEnd = indexEnd;
 			return this;
 		}
 
@@ -96,7 +95,7 @@ namespace CsvHelper.Configuration
 		/// </summary>
 		public virtual CsvPropertyMap Ignore()
 		{
-			data.Ignore = true;
+			Data.Ignore = true;
 			return this;
 		}
 
@@ -106,7 +105,7 @@ namespace CsvHelper.Configuration
 		/// <param name="ignore">True to ignore, otherwise false.</param>
 		public virtual CsvPropertyMap Ignore( bool ignore )
 		{
-			data.Ignore = ignore;
+			Data.Ignore = ignore;
 			return this;
 		}
 
@@ -117,7 +116,7 @@ namespace CsvHelper.Configuration
 		/// <param name="defaultValue">The default value.</param>
 		public virtual CsvPropertyMap Default( object defaultValue )
 		{
-			data.Default = defaultValue;
+			Data.Default = defaultValue;
 			return this;
 		}
 
@@ -128,7 +127,7 @@ namespace CsvHelper.Configuration
 		/// <param name="typeConverter">The TypeConverter to use.</param>
 		public virtual CsvPropertyMap TypeConverter( ITypeConverter typeConverter )
 		{
-			data.TypeConverter = typeConverter;
+			Data.TypeConverter = typeConverter;
 			return this;
 		}
 
@@ -136,7 +135,7 @@ namespace CsvHelper.Configuration
 		/// Specifies the <see cref="TypeConverter"/> to use
 		/// when converting the property to and from a CSV field.
 		/// </summary>
-		/// <typeparam name="T">The <see cref="Type"/> of the 
+		/// <typeparam name="T">The <see cref="System.Type"/> of the 
 		/// <see cref="TypeConverter"/> to use.</typeparam>
 		public virtual CsvPropertyMap TypeConverter<T>() where T : ITypeConverter
 		{
@@ -152,7 +151,13 @@ namespace CsvHelper.Configuration
 		/// <param name="convertExpression">The convert expression.</param>
 		public virtual CsvPropertyMap ConvertUsing<T>( Func<ICsvReaderRow, T> convertExpression )
 		{
-			data.ConvertExpression = (Expression<Func<ICsvReaderRow, T>>)( x => convertExpression( x ) );
+			var returnType = typeof( T );
+			if( !Data.Property.PropertyType.IsAssignableFrom( returnType ) )
+			{
+				throw new CsvConfigurationException( $"ConvertUsing return type '{returnType.FullName}' cannot be assigned to property type '{Data.Property.PropertyType.FullName}'." );
+			}
+
+			Data.ConvertExpression = (Expression<Func<ICsvReaderRow, T>>)( x => convertExpression( x ) );
 			return this;
 		}
 
@@ -164,7 +169,7 @@ namespace CsvHelper.Configuration
 		/// <param name="cultureInfo">The culture info.</param>
 		public virtual CsvPropertyMap TypeConverterOption( CultureInfo cultureInfo )
 		{
-			data.TypeConverterOptions.CultureInfo = cultureInfo;
+			Data.TypeConverterOptions.CultureInfo = cultureInfo;
 			return this;
 		}
 
@@ -175,7 +180,7 @@ namespace CsvHelper.Configuration
 		/// <param name="dateTimeStyle">The date time style.</param>
 		public virtual CsvPropertyMap TypeConverterOption( DateTimeStyles dateTimeStyle )
 		{
-			data.TypeConverterOptions.DateTimeStyle = dateTimeStyle;
+			Data.TypeConverterOptions.DateTimeStyle = dateTimeStyle;
 			return this;
 		}
 
@@ -186,7 +191,7 @@ namespace CsvHelper.Configuration
 		/// <param name="numberStyle"></param>
 		public virtual CsvPropertyMap TypeConverterOption( NumberStyles numberStyle )
 		{
-			data.TypeConverterOptions.NumberStyle = numberStyle;
+			Data.TypeConverterOptions.NumberStyle = numberStyle;
 			return this;
 		}
 
@@ -196,7 +201,7 @@ namespace CsvHelper.Configuration
 		/// <param name="format">The format.</param>
 		public virtual CsvPropertyMap TypeConverterOption( string format )
 		{
-			data.TypeConverterOptions.Format = format;
+			Data.TypeConverterOptions.Format = format;
 			return this;
 		}
 
@@ -222,19 +227,20 @@ namespace CsvHelper.Configuration
 			{
 				if( clearValues )
 				{
-					data.TypeConverterOptions.BooleanTrueValues.Clear();
+					Data.TypeConverterOptions.BooleanTrueValues.Clear();
 				}
-				data.TypeConverterOptions.BooleanTrueValues.AddRange( booleanValues );
+				Data.TypeConverterOptions.BooleanTrueValues.AddRange( booleanValues );
 			}
 			else
 			{
 				if( clearValues )
 				{
-					data.TypeConverterOptions.BooleanFalseValues.Clear();
+					Data.TypeConverterOptions.BooleanFalseValues.Clear();
 				}
-				data.TypeConverterOptions.BooleanFalseValues.AddRange( booleanValues );
+				Data.TypeConverterOptions.BooleanFalseValues.AddRange( booleanValues );
 			}
 			return this;
 		}
 	}
 }
+#endif // !NET_2_0
